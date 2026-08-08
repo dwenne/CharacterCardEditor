@@ -1,6 +1,6 @@
 # Character Card Editor
 
-A browser-based editor for creating and editing SillyTavern-compatible character cards (Character Card V2 spec). Fully static, runs entirely client-side — no backend, no build step.
+A vibe-coded, browser-based editor for creating and editing SillyTavern-compatible character cards (Character Card V2 spec). Fully static, runs entirely client-side — no backend, no build step.
 
 
 ## Features
