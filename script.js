@@ -582,7 +582,7 @@ function renderTabContent(){
     c.appendChild(el('h2',{class:'section-title'},'Greetings'));
     c.appendChild(el('p',{class:'section-desc'},'The opening lines a chat can start from.'));
     const gtNote = el('div',{class:'field-hint',style:'margin:-10px 0 20px'});
-    gtNote.innerHTML = 'The optional title/summary on each greeting only does anything if the user has the <a href="https://github.com/Wolfsblvt/SillyTavern-GreetingTools" target="_blank" rel="noopener" style="color:var(--teal)">SillyTavern-GreetingTools</a> extension installed \u2014 otherwise they\u2019re just notes to yourself.';
+    gtNote.innerHTML = 'The optional title/summary on each greeting only does anything if the user has the <a href="https://github.com/Wolfsblvt/SillyTavern-GreetingTools" target="_blank" rel="noopener" style="color:var(--teal)">SillyTavern-GreetingTools</a> extension installed \u2014 otherwise they\u2019re just notes to yourself.<br><br>You can also use custom pronoun macros (e.g. <code>{{pronounSubjective}}</code> or <code>{{she}}</code>) in your greetings if the <a href="https://github.com/SillyTavern/SillyTavern-Pronouns" target="_blank" rel="noopener" style="color:var(--teal)">SillyTavern-Pronouns</a> extension is installed.';
     c.appendChild(gtNote);
 
     const fmWrap = el('div',{class:'greeting-item'});
@@ -955,10 +955,10 @@ window.addEventListener('beforeunload', e=>{
 
 /* ---------------- theme ---------------- */
 function getStoredTheme(){
-  try{ return localStorage.getItem('folio-theme'); } catch(e){ return null; }
+  try{ return localStorage.getItem('editor-theme'); } catch(e){ return null; }
 }
 function storeTheme(t){
-  try{ localStorage.setItem('folio-theme', t); } catch(e){ /* storage unavailable, theme just won't persist */ }
+  try{ localStorage.setItem('editor-theme', t); } catch(e){ /* storage unavailable, theme just won't persist */ }
 }
 function applyTheme(theme){
   document.documentElement.setAttribute('data-theme', theme);
