@@ -33,7 +33,7 @@ Want to run it locally instead? Clone the repo and open `index.html` directly in
 ## File structure
 
 ```
-index.html      entry point / markup
+index.html    entry point / markup
 script.js     all editor logic (card model, PNG read/write, lorebook editor, UI)
 style.css     styling (light + dark themes)
 ```
