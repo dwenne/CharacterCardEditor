@@ -111,13 +111,6 @@ label{
   letter-spacing:.04em;
   color:var(--amber);
 }
-.brand-sub{
-  font-family:var(--font-mono);
-  font-size:10.5px;
-  letter-spacing:.1em;
-  text-transform:uppercase;
-  color:var(--text-faint);
-}
 .topbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 
 .converter-note{
@@ -168,7 +161,7 @@ label{
   display:flex;
   max-width:1180px;
   margin:0 auto;
-  padding:28px 22px 60px;
+  padding:28px 22px 40px; /* Reduced bottom padding slightly to fit footer */
   gap:0;
   align-items:flex-start;
 }
@@ -517,6 +510,19 @@ label{
   color:var(--text-dim);
 }
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);}
+
+/* ---------- Footer ---------- */
+footer {
+  margin: 0 auto 40px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+footer p { margin: 0; }
+footer a { color: var(--amber-dim); text-decoration: none; }
+footer a:hover { color: var(--amber); }
+
 @media (max-width:820px){
   .app{flex-direction:column;padding:20px 16px 48px;}
   .tabs{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;width:100%;max-width:100%;padding-top:0;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
