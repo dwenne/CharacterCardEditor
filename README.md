@@ -13,7 +13,6 @@ A browser-based editor for creating and editing SillyTavern-compatible character
 - **Lorebook import** — merge or replace entries when importing a lorebook into a card that already has one
 - **Avatar handling** — drag-and-drop or file picker, auto-converts non-PNG images, generates a placeholder avatar if none is set
 - **Live token estimate** for the card content
-- **Light/dark theme toggle**
 - **Everything runs client-side** — nothing is uploaded anywhere; your cards never leave the browser
 
 
