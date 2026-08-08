@@ -3,6 +3,7 @@
 A vibe-coded, browser-based editor for creating and editing SillyTavern-compatible character cards (Character Card V2 spec). Fully static, runs entirely client-side — no backend, no build step.
 
 
+
 ## Features
 
 - **Full V2 card spec** — name, description, personality, scenario, example dialogue, tags, creator notes, and more
@@ -16,26 +17,19 @@ A vibe-coded, browser-based editor for creating and editing SillyTavern-compatib
 - **Everything runs client-side** — nothing is uploaded anywhere; your cards never leave the browser
 
 
+
 ## Usage
 
 Just visit the hosted site — nothing to install:
 
 - [GitHub Pages](https://dwenne.github.io/CharacterCardEditor)
-- [Neocities]([https://yourusername.neocities.org](https://drevaine.neocities.org/cardeditor))
+- [Neocities](https://drevaine.neocities.org/cardeditor)
 
 
 Build your character, then export as PNG or JSON file.
 
 Want to run it locally instead? Clone the repo and open `index.html` directly in a browser — no server or build tools needed.
 
-
-## File structure
-
-```
-index.html    entry point / markup
-script.js     all editor logic (card model, PNG read/write, lorebook editor, UI)
-style.css     styling (light + dark themes)
-```
 
 
 ## Related project
