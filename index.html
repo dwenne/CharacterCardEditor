@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folio — character card editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Crimson+Pro:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="editor-style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <span class="brand-name">Folio</span>
+    <span class="brand-sub">character card editor</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn theme-toggle" id="btnTheme" type="button" aria-label="Toggle light or dark theme">&#9790;</button>
+    <span class="token-badge" id="tokenBadge">~0 tokens</span>
+    <button class="btn" id="btnNew">New</button>
+    <input type="file" id="fileImport" accept=".png,.json" style="display:none">
+    <input type="file" id="fileLorebook" accept=".json" multiple style="display:none">
+    <button class="btn" id="btnImport">Import card</button>
+    <button class="btn" id="btnExportJson">Export JSON</button>
+    <button class="btn primary" id="btnExportPng">Export PNG</button>
+  </div>
+</div>
+
+<div class="app">
+  <div class="tabs" id="tabs"></div>
+  <div class="card">
+    <div class="preview-strip">
+      <input type="file" id="fileAvatar" accept="image/*" style="display:none">
+      <img id="avatarImg" class="avatar" style="display:none" title="Click to change avatar">
+      <div id="avatarEmpty" class="avatar avatar-empty" title="Click to set an avatar">?</div>
+      <div class="preview-meta">
+        <div class="preview-name empty" id="previewName">unnamed character</div>
+        <div class="preview-tags" id="previewTags"></div>
+      </div>
+    </div>
+    <div class="card-inner" id="tabContent"></div>
+  </div>
+</div>
+
+<script src="editor-script.js"></script>
+</body>
+</html>
