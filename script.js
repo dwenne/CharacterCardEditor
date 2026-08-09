@@ -74,6 +74,7 @@ function estimateTokens(){
     d.post_history_instructions, d.first_mes].concat((d.alternate_greetings||[]).map(g=>g.text||''));
   return Math.round(pool.join(' ').length/4);
 }
+function estimateTokensText(str){ return Math.round((str||'').length/4); }
 function refreshHeader(){
   document.getElementById('tokenBadge').innerHTML = '~<b>'+estimateTokens()+'</b> tokens';
   const nameEl = document.getElementById('previewName');
@@ -453,10 +454,27 @@ function fieldWrap(container,labelText,inputEl,hint){
   container.appendChild(wrap);
   return inputEl;
 }
-function fieldTextarea(container,labelText,key,rows,hint){
+function fieldWithTokenCounter(container,labelText,inputEl,getTextFn,hint){
+  const wrap = el('div',{class:'field'});
+  const labelRow = el('div',{class:'field-label-row'});
+  labelRow.appendChild(el('label',{},labelText));
+  const countEl = el('span',{class:'field-token-count'});
+  labelRow.appendChild(countEl);
+  wrap.appendChild(labelRow);
+  wrap.appendChild(inputEl);
+  if(hint) wrap.appendChild(el('div',{class:'field-hint'},hint));
+  container.appendChild(wrap);
+  function update(){ countEl.textContent = '~'+estimateTokensText(getTextFn())+' tok'; }
+  update();
+  const origHandler = inputEl.oninput;
+  inputEl.oninput = (e)=>{ if(origHandler) origHandler(e); update(); };
+  return inputEl;
+}
+function fieldTextarea(container,labelText,key,rows,hint,showTokens){
   const ta = el('textarea',{rows:rows||4});
   ta.value = state.data[key] || '';
   ta.oninput = ()=>{ state.data[key] = ta.value; refreshHeader(); };
+  if(showTokens) return fieldWithTokenCounter(container,labelText,ta,()=>ta.value,hint);
   return fieldWrap(container,labelText,ta,hint);
 }
 function fieldInput(container,labelText,key,hint){
@@ -572,11 +590,11 @@ function renderTabContent(){
   else if(state.activeTab === 'persona'){
     c.appendChild(el('h2',{class:'section-title'},'Core'));
     c.appendChild(el('p',{class:'section-desc'},'The core traits and voice sent to the model on every message.'));
-    fieldTextarea(c,'Description','description',7,'Appearance, background, defining traits \u2014 the main body of who this character is.');
-    fieldTextarea(c,'Scenario','scenario',3,'The setting or circumstance the chat begins in.');
-    fieldTextarea(c,'Example dialogue','mes_example',6,'Use <START> to separate examples, and {{char}} / {{user}} placeholders.');
-    fieldTextarea(c,'System prompt','system_prompt',3,'Overrides the client default system prompt, if set.');
-    fieldTextarea(c,'Post-history instructions','post_history_instructions',3,'Injected after the chat history \u2014 good for reminders and steering.');
+    fieldTextarea(c,'Description','description',7,'Appearance, background, defining traits \u2014 the main body of who this character is.',true);
+    fieldTextarea(c,'Scenario','scenario',3,'The setting or circumstance the chat begins in.',true);
+    fieldTextarea(c,'Example dialogue','mes_example',6,'Use <START> to separate examples, and {{char}} / {{user}} placeholders.',true);
+    fieldTextarea(c,'System prompt','system_prompt',3,'Overrides the client default system prompt, if set.',true);
+    fieldTextarea(c,'Post-history instructions','post_history_instructions',3,'Injected after the chat history \u2014 good for reminders and steering.',true);
   }
   else if(state.activeTab === 'greetings'){
     c.appendChild(el('h2',{class:'section-title'},'Greetings'));
@@ -588,10 +606,12 @@ function renderTabContent(){
     const fmWrap = el('div',{class:'greeting-item'});
     const fmHead = el('div',{class:'greeting-item-head'});
     fmHead.appendChild(el('span',{},'Main greeting'));
+    const fmTokenEl = el('span',{}, '~'+estimateTokensText(state.data.first_mes)+' tok');
+    fmHead.appendChild(fmTokenEl);
     fmWrap.appendChild(fmHead);
     const fmTa = el('textarea',{rows:4,placeholder:"Sent as the character's opening line."});
     fmTa.value = state.data.first_mes;
-    fmTa.oninput = ()=>{ state.data.first_mes = fmTa.value; refreshHeader(); };
+    fmTa.oninput = ()=>{ state.data.first_mes = fmTa.value; refreshHeader(); fmTokenEl.textContent = '~'+estimateTokensText(fmTa.value)+' tok'; };
     fmWrap.appendChild(fmTa);
     const fmRow = el('div',{class:'row',style:'margin-top:10px'});
     const fmTitleWrap = el('div',{class:'field',style:'margin-bottom:0'});
@@ -620,13 +640,17 @@ function renderTabContent(){
         const item = el('div',{class:'greeting-item'});
         const head = el('div',{class:'greeting-item-head'});
         head.appendChild(el('span',{},'Alternate '+(i+1)));
+        const rightGroup = el('div',{style:'display:flex;align-items:center;gap:10px'});
+        const tokenEl = el('span',{}, '~'+estimateTokensText(g.text)+' tok');
+        rightGroup.appendChild(tokenEl);
         const del = el('button',{class:'btn small danger',type:'button'},'Remove');
         del.onclick = ()=>{ state.data.alternate_greetings.splice(i,1); renderGreetings(); };
-        head.appendChild(del);
+        rightGroup.appendChild(del);
+        head.appendChild(rightGroup);
         item.appendChild(head);
         const ta = el('textarea',{rows:3});
         ta.value = g.text;
-        ta.oninput = ()=> state.data.alternate_greetings[i].text = ta.value;
+        ta.oninput = ()=>{ state.data.alternate_greetings[i].text = ta.value; tokenEl.textContent = '~'+estimateTokensText(ta.value)+' tok'; };
         item.appendChild(ta);
         const gRow = el('div',{class:'row',style:'margin-top:10px'});
         const gT = el('div',{class:'field',style:'margin-bottom:0'});
@@ -758,7 +782,9 @@ function renderLorebook(c){
 
         subhead(body,'Content');
         fieldWrap(body,'Comment / title', (()=>{ const i=textInput(entry.comment, v=>{ entry.comment=v; commentEl.textContent=v||'untitled entry'; commentEl.className='entry-comment'+(v?'':' empty'); }); return i; })());
-        fieldWrap(body,'Content', (()=>{ const t=el('textarea',{rows:4}); t.value=entry.content; t.oninput=()=>entry.content=t.value; return t; })());
+        const contentTa = el('textarea',{rows:4}); contentTa.value = entry.content;
+        contentTa.oninput = ()=> entry.content = contentTa.value;
+        fieldWithTokenCounter(body,'Content', contentTa, ()=>contentTa.value);
 
         subhead(body,'Keys');
         const kbox = el('div',{}); fieldWrap(body,'Primary keys', kbox);
