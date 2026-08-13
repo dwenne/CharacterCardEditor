@@ -312,6 +312,13 @@ label{
   font-size:12px;
   padding:4px 6px 4px 10px;
   border-radius:4px;
+  max-width:100%;
+  min-width:0;
+}
+.chip span{
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  min-width:0;
 }
 .chip button{
   background:none;border:none;color:var(--text-faint);
@@ -319,7 +326,7 @@ label{
 }
 .chip button:hover{color:var(--rose);}
 .chip-input{
-  border:none;background:transparent;flex:1;min-width:80px;padding:4px;
+  border:none;background:transparent;flex:1;min-width:80px;max-width:100%;padding:4px;
 }
 .chip-input:focus{border:none;}
 
