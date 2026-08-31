@@ -55,16 +55,27 @@ function newData(){
     post_history_instructions:'',
     alternate_greetings:[],
     tags:[], creator:'', character_version:'',
-    character_book:newBook(), raw_extensions:{}
+    character_book:newBook(), raw_extensions:{}, alt_fields:{}
   };
 }
+/* Fields supported by the SillyTavern-AlternateDescriptions extension.
+   saveKey matches extensions.alternate_fields.[saveKey] in the card JSON. */
+const ALT_FIELD_MAP = [
+  {key:'description', saveKey:'alt_descriptions', label:'Description'},
+  {key:'scenario', saveKey:'alt_scenarios', label:'Scenario'},
+  {key:'mes_example', saveKey:'alt_example_dialogue', label:'Example dialogue'},
+  {key:'system_prompt', saveKey:'alt_main_prompts', label:'System prompt'},
+  {key:'post_history_instructions', saveKey:'alt_post_history', label:'Post-history instructions'}
+];
 
 const state = {
   data:newData(),
   avatarBuffer:null,
   avatarUrl:null,
   activeTab:'portrait',
-  openEntry:null
+  openEntry:null,
+  altFieldsOpen:{},
+  greetingMetaOpen:{}
 };
 
 /* ---------------- token estimate ---------------- */
@@ -313,6 +324,16 @@ function buildV2Card(){
   const extensions = Object.assign({}, d.raw_extensions||{}, buildGreetingExtensions(d));
   if(d.character_book.entries.length) extensions.world = d.character_book.name || '';
   else delete extensions.world;
+  const altFieldsOut = Object.assign({}, d.alt_fields||{});
+  ALT_FIELD_MAP.forEach(f=>{
+    const arr = (d.alt_fields && d.alt_fields[f.saveKey]) || [];
+    const cleaned = arr.filter(v=>v && ((v.title||'').trim() || (v.content||'').trim()))
+      .map(v=>({title:v.title||'', content:v.content||''}));
+    if(cleaned.length) altFieldsOut[f.saveKey] = cleaned;
+    else delete altFieldsOut[f.saveKey];
+  });
+  if(Object.keys(altFieldsOut).length) extensions.alternate_fields = altFieldsOut;
+  else delete extensions.alternate_fields;
   return {
     spec:'chara_card_v2', spec_version:'2.0',
     data:{
@@ -331,6 +352,8 @@ function loadFromSpec(json){
   const ext = Object.assign({}, d.extensions || {});
   const gt = ext.greeting_tools || {};
   delete ext.greeting_tools;
+  const altFields = ext.alternate_fields || {};
+  delete ext.alternate_fields;
   const mainG = gt.mainGreeting || {};
   const altTexts = d.alternate_greetings || [];
   const altGreetings = altTexts.map((textItem,i)=>{
@@ -345,7 +368,7 @@ function loadFromSpec(json){
     post_history_instructions:d.post_history_instructions||'',
     alternate_greetings:altGreetings,
     tags:d.tags||[], creator:d.creator||'', character_version:d.character_version||'',
-    character_book:bookFromAny(d.character_book), raw_extensions:ext
+    character_book:bookFromAny(d.character_book), raw_extensions:ext, alt_fields:altFields
   });
 }
 
@@ -513,7 +536,77 @@ function selectInput(value,options,oninput){
   return s;
 }
 function subhead(container,text){ container.appendChild(el('div',{class:'subhead'},text)); }
+function renderGreetingMeta(container, storeKey, g){
+  if(state.greetingMetaOpen[storeKey] === undefined){
+    state.greetingMetaOpen[storeKey] = !!(g.title || g.description);
+  }
+  const isOpen = state.greetingMetaOpen[storeKey];
+  const hasContent = !!(g.title || g.description);
+  const toggle = el('button',{class:'greeting-meta-toggle',type:'button'});
+  const leftWrap = el('span',{style:'display:flex;align-items:center;gap:6px'});
+  leftWrap.appendChild(el('span',{class:'entry-chevron'+(isOpen?' open':'')},'\u203a'));
+  leftWrap.appendChild(el('span',{},'Title & summary'));
+  toggle.appendChild(leftWrap);
+  if(hasContent && !isOpen) toggle.appendChild(el('span',{class:'set-badge'},'\u25cf set'));
+  toggle.onclick = ()=>{ state.greetingMetaOpen[storeKey] = !isOpen; renderTabContent(); };
+  container.appendChild(toggle);
+  if(!isOpen) return;
+  const body = el('div',{class:'greeting-meta-body'});
+  const tWrap = el('div',{class:'field'});
+  tWrap.appendChild(el('label',{},'Title'));
+  const tIn = el('input',{type:'text',placeholder:'Optional title'});
+  tIn.value = g.title||'';
+  tIn.oninput = ()=> g.title = tIn.value;
+  tWrap.appendChild(tIn);
+  body.appendChild(tWrap);
+  const dWrap = el('div',{class:'field',style:'margin-bottom:0'});
+  dWrap.appendChild(el('label',{},'Summary'));
+  const dTa = el('textarea',{rows:3,placeholder:'Optional summary'});
+  dTa.value = g.description||'';
+  dTa.oninput = ()=> g.description = dTa.value;
+  dWrap.appendChild(dTa);
+  body.appendChild(dWrap);
+  container.appendChild(body);
+}
 function switchGrid(container){ const g = el('div',{class:'switch-grid'}); container.appendChild(g); return g; }
+function getAltList(saveKey){
+  if(!state.data.alt_fields) state.data.alt_fields = {};
+  if(!Array.isArray(state.data.alt_fields[saveKey])) state.data.alt_fields[saveKey] = [];
+  return state.data.alt_fields[saveKey];
+}
+function renderAltFieldSection(container, fieldDef){
+  const list = getAltList(fieldDef.saveKey);
+  if(state.altFieldsOpen[fieldDef.saveKey] === undefined) state.altFieldsOpen[fieldDef.saveKey] = list.length > 0;
+  const toggleWrap = el('div',{class:'field',style:'margin-bottom:10px'});
+  switchToggle(toggleWrap, 'Alt. '+fieldDef.label,
+    'Save extra takes on this field and swap between them in SillyTavern.',
+    ()=>state.altFieldsOpen[fieldDef.saveKey],
+    v=>{ state.altFieldsOpen[fieldDef.saveKey]=v; renderTabContent(); });
+  container.appendChild(toggleWrap);
+  if(!state.altFieldsOpen[fieldDef.saveKey]) return;
+  const panel = el('div',{style:'margin-bottom:20px'});
+  list.forEach((variant,i)=>{
+    const item = el('div',{class:'greeting-item'});
+    const head = el('div',{class:'greeting-item-head'});
+    head.appendChild(el('span',{},fieldDef.label+' variant '+(i+1)));
+    const del = el('button',{class:'btn small danger',type:'button'},'Remove');
+    del.onclick = ()=>{ list.splice(i,1); renderTabContent(); };
+    head.appendChild(del);
+    item.appendChild(head);
+    const titleInput = textInput(variant.title||'', v=>variant.title=v);
+    titleInput.placeholder = 'Title (optional, shown in the /altfield picker)';
+    item.appendChild(titleInput);
+    const contentTa = el('textarea',{rows:5,style:'margin-top:8px'});
+    contentTa.value = variant.content||'';
+    contentTa.oninput = ()=> variant.content = contentTa.value;
+    item.appendChild(contentTa);
+    panel.appendChild(item);
+  });
+  const addBtn = el('button',{class:'entry-add',type:'button',style:'width:100%'},'+ Add variant');
+  addBtn.onclick = ()=>{ list.push({title:'', content:''}); renderTabContent(); };
+  panel.appendChild(addBtn);
+  container.appendChild(panel);
+}
 function showModal({title,message,buttons}){
   return new Promise(resolve=>{
     const overlay = el('div',{class:'modal-overlay'});
@@ -590,11 +683,20 @@ function renderTabContent(){
   else if(state.activeTab === 'persona'){
     c.appendChild(el('h2',{class:'section-title'},'Core'));
     c.appendChild(el('p',{class:'section-desc'},'The core traits and voice sent to the model on every message.'));
-    fieldTextarea(c,'Description','description',7,'Appearance, background, defining traits \u2014 the main body of who this character is.',true);
-    fieldTextarea(c,'Scenario','scenario',3,'The setting or circumstance the chat begins in.',true);
-    fieldTextarea(c,'Example dialogue','mes_example',6,'Use <START> to separate examples, and {{char}} / {{user}} placeholders.',true);
-    fieldTextarea(c,'System prompt','system_prompt',3,'Overrides the client default system prompt, if set.',true);
-    fieldTextarea(c,'Post-history instructions','post_history_instructions',3,'Injected after the chat history \u2014 good for reminders and steering.',true);
+    const altNote = el('div',{class:'field-hint',style:'margin:-10px 0 20px'});
+    altNote.innerHTML = 'The \u201cAlt. versions\u201d toggles below only do anything if the user has the <a href="https://github.com/nbrown725/SillyTavern-AlternateDescriptions" target="_blank" rel="noopener" style="color:var(--teal)">SillyTavern-AlternateDescriptions</a> extension installed \u2014 otherwise they\u2019re just extra text saved in the card.';
+    c.appendChild(altNote);
+    const coreField = (label,key,rows,hint,altDef)=>{
+      const grp = el('div',{class:'core-field-group'});
+      fieldTextarea(grp,label,key,rows,hint,true);
+      renderAltFieldSection(grp, altDef);
+      c.appendChild(grp);
+    };
+    coreField('Description','description',7,'Appearance, background, defining traits \u2014 the main body of who this character is.',ALT_FIELD_MAP[0]);
+    coreField('Scenario','scenario',3,'The setting or circumstance the chat begins in.',ALT_FIELD_MAP[1]);
+    coreField('Example dialogue','mes_example',6,'Use <START> to separate examples, and {{char}} / {{user}} placeholders.',ALT_FIELD_MAP[2]);
+    coreField('System prompt','system_prompt',3,'Overrides the client default system prompt, if set.',ALT_FIELD_MAP[3]);
+    coreField('Post-history instructions','post_history_instructions',3,'Injected after the chat history \u2014 good for reminders and steering.',ALT_FIELD_MAP[4]);
   }
   else if(state.activeTab === 'greetings'){
     c.appendChild(el('h2',{class:'section-title'},'Greetings'));
@@ -613,19 +715,7 @@ function renderTabContent(){
     fmTa.value = state.data.first_mes;
     fmTa.oninput = ()=>{ state.data.first_mes = fmTa.value; refreshHeader(); fmTokenEl.textContent = '~'+estimateTokensText(fmTa.value)+' tok'; };
     fmWrap.appendChild(fmTa);
-    const fmRow = el('div',{class:'row',style:'margin-top:10px'});
-    const fmTitleWrap = el('div',{class:'field',style:'margin-bottom:0'});
-    const fmTitle = el('input',{type:'text',placeholder:'Optional title'});
-    fmTitle.value = state.data.first_mes_meta.title;
-    fmTitle.oninput = ()=> state.data.first_mes_meta.title = fmTitle.value;
-    fmTitleWrap.appendChild(fmTitle);
-    const fmDescWrap = el('div',{class:'field',style:'margin-bottom:0'});
-    const fmDesc = el('input',{type:'text',placeholder:'Optional summary'});
-    fmDesc.value = state.data.first_mes_meta.description;
-    fmDesc.oninput = ()=> state.data.first_mes_meta.description = fmDesc.value;
-    fmDescWrap.appendChild(fmDesc);
-    fmRow.appendChild(fmTitleWrap); fmRow.appendChild(fmDescWrap);
-    fmWrap.appendChild(fmRow);
+    renderGreetingMeta(fmWrap, 'main', state.data.first_mes_meta);
     c.appendChild(fmWrap);
 
     const wrap = el('div',{class:'field'});
@@ -652,17 +742,7 @@ function renderTabContent(){
         ta.value = g.text;
         ta.oninput = ()=>{ state.data.alternate_greetings[i].text = ta.value; tokenEl.textContent = '~'+estimateTokensText(ta.value)+' tok'; };
         item.appendChild(ta);
-        const gRow = el('div',{class:'row',style:'margin-top:10px'});
-        const gT = el('div',{class:'field',style:'margin-bottom:0'});
-        const gTi = el('input',{type:'text',placeholder:'Optional title'});
-        gTi.value = g.title; gTi.oninput = ()=> state.data.alternate_greetings[i].title = gTi.value;
-        gT.appendChild(gTi);
-        const gD = el('div',{class:'field',style:'margin-bottom:0'});
-        const gDi = el('input',{type:'text',placeholder:'Optional summary'});
-        gDi.value = g.description; gDi.oninput = ()=> state.data.alternate_greetings[i].description = gDi.value;
-        gD.appendChild(gDi);
-        gRow.appendChild(gT); gRow.appendChild(gD);
-        item.appendChild(gRow);
+        renderGreetingMeta(item, 'alt'+i, g);
         list.appendChild(item);
       });
     }

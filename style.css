@@ -312,6 +312,13 @@ label{
   font-size:12px;
   padding:4px 6px 4px 10px;
   border-radius:4px;
+  max-width:100%;
+  min-width:0;
+}
+.chip span{
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  min-width:0;
 }
 .chip button{
   background:none;border:none;color:var(--text-faint);
@@ -319,7 +326,7 @@ label{
 }
 .chip button:hover{color:var(--rose);}
 .chip-input{
-  border:none;background:transparent;flex:1;min-width:80px;padding:4px;
+  border:none;background:transparent;flex:1;min-width:80px;max-width:100%;padding:4px;
 }
 .chip-input:focus{border:none;}
 
@@ -428,6 +435,25 @@ label{
 .badge.off{background:var(--panel-alt);color:var(--text-faint);}
 .entry-chevron{color:var(--text-faint);flex-shrink:0;transition:transform .15s;font-family:var(--font-mono);}
 .entry.open .entry-chevron{transform:rotate(90deg);}
+.greeting-meta-toggle{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;
+  background:transparent;border:none;border-top:1px solid var(--line-soft);
+  color:var(--text-faint);
+  font-family:var(--font-mono);
+  font-size:10.5px;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  padding:9px 2px 3px;
+  margin-top:12px;
+  cursor:pointer;
+}
+.greeting-meta-toggle:hover{color:var(--text-dim);}
+.greeting-meta-toggle .entry-chevron{font-size:13px;}
+.greeting-meta-toggle .set-badge{color:var(--teal);text-transform:none;letter-spacing:0;font-size:10.5px;}
+.greeting-meta-body{margin-top:10px;}
+.core-field-group{padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid var(--line-soft);}
+.core-field-group:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
 .entry-body{
   padding:4px 14px 16px;
   border-top:1px solid var(--line-soft);
