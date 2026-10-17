@@ -75,12 +75,20 @@ const state = {
   activeTab:'portrait',
   openEntry:null,
   altFieldsOpen:{},
-  greetingMetaOpen:{}
+  greetingMetaOpen:{},
+  previewOpen:false,
+  previewPct:50,
+  previewSide:'right',
+  previewText:'rendered',
+  previewTab:'card',
+  previewFull:false,
+  previewRemote:false,
+  previewLoreOpen:false
 };
 
 /* ---------------- token estimate ---------------- */
-function estimateTokens(){
-  const d = state.data;
+function estimateTokens(){ return estimateTokensFor(state.data); }
+function estimateTokensFor(d){
   const pool = [d.description, d.scenario, d.mes_example, d.system_prompt,
     d.post_history_instructions, d.first_mes].concat((d.alternate_greetings||[]).map(g=>g.text||''));
   return Math.round(pool.join(' ').length/4);
@@ -92,6 +100,7 @@ function refreshHeader(){
   if(state.data.name){ nameEl.textContent = state.data.name; nameEl.classList.remove('empty'); }
   else { nameEl.textContent = 'unnamed character'; nameEl.classList.add('empty'); }
   document.getElementById('previewTags').textContent = state.data.tags.join(' \u00b7 ');
+  schedulePreview();
 }
 
 /* ---------------- PNG chunk utilities ---------------- */
@@ -399,7 +408,9 @@ function exportJson(){
 async function importFile(file){
   if(file.type === 'application/json' || file.name.endsWith('.json')){
     const text = await file.text();
-    loadFromSpec(JSON.parse(text));
+    const json = JSON.parse(text);
+    snapshotNow('Replaced by import');
+    loadFromSpec(json);
     render();
     return;
   }
@@ -419,7 +430,9 @@ async function importFile(file){
   const chunkStr = new TextDecoder().decode(found.c.data.slice(idx+1));
   let jsonStr;
   try{ jsonStr = base64ToUtf8(chunkStr); } catch(e){ jsonStr = chunkStr; }
-  loadFromSpec(JSON.parse(jsonStr));
+  const json = JSON.parse(jsonStr);
+  snapshotNow('Replaced by import');
+  loadFromSpec(json);
   state.avatarBuffer = buffer;
   if(state.avatarUrl) URL.revokeObjectURL(state.avatarUrl);
   state.avatarUrl = URL.createObjectURL(new Blob([buffer],{type:'image/png'}));
@@ -988,17 +1001,499 @@ function render(){
   const empty = document.getElementById('avatarEmpty');
   if(state.avatarUrl){ img.src = state.avatarUrl; img.style.display='block'; empty.style.display='none'; }
   else { img.style.display='none'; empty.style.display='flex'; empty.textContent = (state.data.name||'?').trim().charAt(0).toUpperCase() || '?'; }
+  renderPreview();
 }
 
 /* ---------------- wire up static controls ---------------- */
-document.getElementById('btnNew').onclick = async ()=>{
-  if(!await confirmModal('Start a new character?','Everything in the current card will be lost unless you\u2019ve already exported it.','Start new')) return;
+/* ---------------- history (clear / restore) ---------------- */
+const HISTORY_MAX = 5;
+const cardHistory = [];
+function cardIsBlank(){
+  const d = state.data;
+  return !(d.name || d.description || d.scenario || d.first_mes || d.mes_example || d.creator_notes ||
+    d.system_prompt || d.post_history_instructions || d.creator || d.character_version ||
+    d.alternate_greetings.length || d.tags.length || d.character_book.entries.length ||
+    d.character_book.name || state.avatarBuffer);
+}
+function refreshHistoryButton(){
+  const b = document.getElementById('btnRestore');
+  b.disabled = !cardHistory.length;
+  b.textContent = cardHistory.length ? 'Restore ('+cardHistory.length+')' : 'Restore';
+}
+/* Saves the current card into the history list (newest first, capped). Blank cards are skipped. */
+function snapshotNow(reason){
+  if(cardIsBlank()){ refreshHistoryButton(); return false; }
+  cardHistory.unshift({ time:Date.now(), reason, data:JSON.parse(JSON.stringify(state.data)), avatarBuffer:state.avatarBuffer });
+  if(cardHistory.length > HISTORY_MAX) cardHistory.length = HISTORY_MAX;
+  refreshHistoryButton();
+  return true;
+}
+function resetCard(){
   state.data = newData();
   state.avatarBuffer = null;
   if(state.avatarUrl) URL.revokeObjectURL(state.avatarUrl);
   state.avatarUrl = null; state.openEntry = null;
+  state.altFieldsOpen = {}; state.greetingMetaOpen = {};
+}
+function restoreSnapshot(i){
+  const snap = cardHistory.splice(i,1)[0];
+  if(!snap) return;
+  snapshotNow('Before restore');
+  refreshHistoryButton();
+  if(state.avatarUrl) URL.revokeObjectURL(state.avatarUrl);
+  state.data = snap.data;
+  state.avatarBuffer = snap.avatarBuffer;
+  state.avatarUrl = snap.avatarBuffer ? URL.createObjectURL(new Blob([snap.avatarBuffer],{type:'image/png'})) : null;
+  state.openEntry = null; state.altFieldsOpen = {}; state.greetingMetaOpen = {};
+  render();
+}
+function timeAgo(ts){
+  const s = Math.round((Date.now()-ts)/1000);
+  if(s < 45) return 'just now';
+  const m = Math.round(s/60);
+  if(m < 60) return m+' min ago';
+  return Math.round(m/60)+' hr ago';
+}
+function openHistoryModal(){
+  if(!cardHistory.length) return;
+  const overlay = el('div',{class:'modal-overlay'});
+  const box = el('div',{class:'modal-box wide'});
+  box.appendChild(el('h3',{class:'modal-title'},'Restore a card'));
+  box.appendChild(el('p',{class:'modal-message'},'Your last '+HISTORY_MAX+' cleared or replaced cards, newest first. Restoring swaps: whatever\u2019s in the editor now is saved to this list first. The list lives in this tab only, so a refresh forgets it.'));
+  const list = el('div',{class:'history-list'});
+  const urls = [];
+  cardHistory.forEach((h,i)=>{
+    const row = el('div',{class:'history-row'});
+    let thumb;
+    if(h.avatarBuffer){
+      const u = URL.createObjectURL(new Blob([h.avatarBuffer],{type:'image/png'}));
+      urls.push(u);
+      thumb = el('img',{class:'history-thumb',src:u,alt:''});
+    } else {
+      thumb = el('div',{class:'history-thumb'},(h.data.name||'?').trim().charAt(0).toUpperCase() || '?');
+    }
+    const meta = el('div',{class:'history-meta'});
+    meta.appendChild(el('div',{class:'history-name'},h.data.name || 'unnamed character'));
+    const n = h.data.character_book.entries.length;
+    const bits = [h.reason, timeAgo(h.time), '~'+estimateTokensFor(h.data)+' tok'];
+    if(n) bits.push(n+(n===1?' entry':' entries'));
+    meta.appendChild(el('div',{class:'history-sub'},bits.join(' \u00b7 ')));
+    const btn = el('button',{class:'btn small primary',type:'button'},'Restore');
+    btn.onclick = ()=>{ finish(); restoreSnapshot(i); };
+    row.appendChild(thumb); row.appendChild(meta); row.appendChild(btn);
+    list.appendChild(row);
+  });
+  box.appendChild(list);
+  const buttons = el('div',{class:'modal-buttons'});
+  const closeBtn = el('button',{class:'btn',type:'button'},'Close');
+  closeBtn.onclick = ()=>finish();
+  buttons.appendChild(closeBtn);
+  box.appendChild(buttons);
+  overlay.appendChild(box);
+  overlay.onclick = e=>{ if(e.target===overlay) finish(); };
+  function onKey(e){ if(e.key==='Escape') finish(); }
+  function finish(){
+    document.removeEventListener('keydown', onKey);
+    urls.forEach(u=>URL.revokeObjectURL(u));
+    if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  }
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(overlay);
+}
+document.getElementById('btnNew').onclick = async ()=>{
+  if(cardIsBlank()) return;
+  if(!await confirmModal('Clear everything?','The whole card (text, avatar, and lorebook) will be wiped. You can bring it back with Restore; the last '+HISTORY_MAX+' cleared cards are kept until you refresh or close this tab.','Clear all')) return;
+  snapshotNow('Cleared');
+  resetCard();
   render();
 };
+document.getElementById('btnRestore').onclick = openHistoryModal;
+
+/* ---------------- preview panel ---------------- */
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function inlineMd(t){
+  t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,'<img alt="$1" src="$2">');
+  t = t.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,'<a href="$2">$1</a>');
+  t = t.replace(/\*\*\*([^*\n]+)\*\*\*/g,'<strong><em>$1</em></strong>');
+  t = t.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+  t = t.replace(/\*([^*\n]+)\*/g,'<em>$1</em>');
+  t = t.replace(/~~([^~\n]+)~~/g,'<del>$1</del>');
+  return t;
+}
+/* Small markdown subset that leaves raw HTML and <style> blocks alone, like creator notes in SillyTavern. */
+function mdToHtml(src){
+  const stash = [];
+  const hold = (h,block)=>{ stash.push(h); const c = block ? '\u0001' : '\u0002'; return c+(stash.length-1)+c; };
+  let s = String(src||'').replace(/\r\n?/g,'\n');
+  s = s.replace(/<style[\s\S]*?<\/style>/gi, m=>hold(m,true));
+  s = s.replace(/```[^\n]*\n([\s\S]*?)```/g, (m,code)=>hold('<pre><code>'+escHtml(code.replace(/\n$/,''))+'</code></pre>',true));
+  s = s.replace(/`([^`\n]+)`/g, (m,c)=>hold('<code>'+escHtml(c)+'</code>',false));
+  const out = [];
+  let para = [], quote = [], list = null;
+  const flush = ()=>{
+    if(para.length){ out.push('<p>'+para.join('<br>')+'</p>'); para = []; }
+    if(quote.length){ out.push('<blockquote>'+quote.join('<br>')+'</blockquote>'); quote = []; }
+    if(list){ out.push('<'+list.t+'>'+list.items.map(i=>'<li>'+i+'</li>').join('')+'</'+list.t+'>'); list = null; }
+  };
+  s.split('\n').forEach(line=>{
+    const tl = line.trim();
+    let m;
+    if(!tl){ flush(); return; }
+    if(/^\u0001\d+\u0001$/.test(tl)){ flush(); out.push(tl); return; }
+    if((m = tl.match(/^(#{1,6})\s+(.*)$/))){ flush(); out.push('<h'+m[1].length+'>'+inlineMd(m[2])+'</h'+m[1].length+'>'); return; }
+    if(/^(-{3,}|\*{3,}|_{3,})$/.test(tl)){ flush(); out.push('<hr>'); return; }
+    if((m = tl.match(/^>\s?(.*)$/))){ if(!quote.length) flush(); quote.push(inlineMd(m[1])); return; }
+    if((m = tl.match(/^([-*+]|\d+[.)])\s+(.*)$/))){
+      const t = /\d/.test(m[1].charAt(0)) ? 'ol' : 'ul';
+      if(list && list.t !== t) flush();
+      if(!list){ flush(); list = {t, items:[]}; }
+      list.items.push(inlineMd(m[2]));
+      return;
+    }
+    if(tl.charAt(0) === '<'){ flush(); out.push(inlineMd(line)); return; }
+    if(list || quote.length) flush();
+    para.push(inlineMd(tl));
+  });
+  flush();
+  return out.join('\n').replace(/[\u0001\u0002](\d+)[\u0001\u0002]/g,(m,n)=>stash[+n]);
+}
+function fillMacros(t){
+  const name = escHtml(state.data.name || 'Character');
+  return String(t||'').replace(/\{\{\s*char\s*\}\}/gi,name).replace(/\{\{\s*user\s*\}\}/gi,'User');
+}
+function buildNotesDoc(html){
+  const cs = getComputedStyle(document.documentElement);
+  const v = n=>cs.getPropertyValue(n).trim();
+  const theme = document.documentElement.getAttribute('data-theme')==='light' ? 'light' : 'dark';
+  const csp = state.previewRemote
+    ? "default-src 'none'; img-src data: blob: https: http:; media-src https: http:; style-src 'unsafe-inline' https:; font-src https: data:; form-action 'none'"
+    : "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'";
+  const base = 'html{color-scheme:'+theme+'}html,body{margin:0}body{padding:2px;color:'+v('--text')+';font:15px/1.55 Georgia,serif;overflow-wrap:anywhere}'+
+    'p{margin:0 0 .7em}h1,h2,h3,h4,h5,h6{margin:.9em 0 .4em;line-height:1.25}img,video{max-width:100%}a{color:'+v('--teal')+'}'+
+    'blockquote{margin:.6em 0;padding:.1em .9em;border-left:3px solid '+v('--line')+';color:'+v('--text-dim')+'}'+
+    'code{font-family:monospace;font-size:.9em;background:'+v('--panel-alt')+';padding:0 .3em;border-radius:3px}pre{overflow:auto;background:'+v('--panel-alt')+';padding:.7em;border-radius:4px}'+
+    'hr{border:none;border-top:1px solid '+v('--line')+'}';
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="'+csp+'"><style>'+base+'</style></head><body>'+html+'</body></html>';
+}
+const pv = {};
+function clampPct(v){ return Math.round(Math.min(75, Math.max(25, v))*10)/10; }
+function storePreviewPrefs(){
+  try{
+    localStorage.setItem('editor-preview-pct', String(state.previewPct));
+    localStorage.setItem('editor-preview-side', state.previewSide);
+    localStorage.setItem('editor-preview-text', state.previewText);
+  } catch(e){ /* storage unavailable */ }
+}
+try{
+  const sp = parseFloat(localStorage.getItem('editor-preview-pct')); if(sp) state.previewPct = clampPct(sp);
+  const ss = localStorage.getItem('editor-preview-side'); if(ss==='left' || ss==='right') state.previewSide = ss;
+  const stx = localStorage.getItem('editor-preview-text'); if(stx==='rendered' || stx==='plain') state.previewText = stx;
+} catch(e){ /* ignore */ }
+function appendHighlighted(node,text){
+  text.split(/(\{\{[^{}]*\}\}|<START>)/gi).forEach((part,i)=>{
+    if(!part) return;
+    if(i%2===1) node.appendChild(el('span',{class:'pv-macro'},part));
+    else node.appendChild(document.createTextNode(part));
+  });
+}
+function setPreviewOpen(v){
+  state.previewOpen = v;
+  if(!v) state.previewFull = false;
+  renderPreview();
+}
+function buildPreview(){
+  const p = document.getElementById('previewPanel');
+  p.innerHTML = '';
+  const grip = el('div',{class:'pv-resize',role:'separator','aria-orientation':'vertical','aria-label':'Resize the split (left/right arrow keys also work)',tabindex:'0',title:'Drag to resize the split'});
+  const appEl = ()=>document.querySelector('.app');
+  grip.addEventListener('pointerdown', e=>{
+    e.preventDefault();
+    const a = appEl(), r = a.getBoundingClientRect(), cs = getComputedStyle(a);
+    const left = r.left + parseFloat(cs.paddingLeft);
+    const width = r.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    grip.setPointerCapture(e.pointerId);
+    document.body.classList.add('pv-resizing');
+    let raf = 0;
+    const move = ev=>{
+      const x = (ev.clientX - left) / width * 100;
+      state.previewPct = clampPct(state.previewSide==='left' ? x : 100 - x);
+      a.style.setProperty('--pv-pct', state.previewPct);
+      if(!raf) raf = requestAnimationFrame(()=>{ raf = 0; if(pv.measure) pv.measure(); });
+    };
+    const up = ()=>{
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+      document.body.classList.remove('pv-resizing');
+      storePreviewPrefs();
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+  grip.addEventListener('keydown', e=>{
+    if(e.key!=='ArrowLeft' && e.key!=='ArrowRight') return;
+    e.preventDefault();
+    const grow = state.previewSide==='right' ? e.key==='ArrowLeft' : e.key==='ArrowRight';
+    state.previewPct = clampPct(state.previewPct + (grow ? 2 : -2));
+    renderPreview(); storePreviewPrefs();
+    if(pv.measure) pv.measure();
+  });
+  p.appendChild(grip);
+  const head = el('div',{class:'pv-head'});
+  const tabs = el('div',{class:'pv-tabs',role:'tablist'});
+  pv.tabBtns = {};
+  [['card','Card'],['prompt','Prompt'],['full','Full']].forEach(([id,label])=>{
+    const b = el('button',{class:'pv-tab',type:'button',role:'tab'},label);
+    b.onclick = ()=>{ state.previewTab = id; renderPreview(); };
+    pv.tabBtns[id] = b;
+    tabs.appendChild(b);
+  });
+  head.appendChild(tabs);
+  head.appendChild(el('span',{class:'pv-spacer'}));
+  pv.fullBtn = el('button',{class:'btn small',type:'button'},'Fullscreen');
+  pv.fullBtn.onclick = ()=>{ state.previewFull = !state.previewFull; renderPreview(); };
+  const closeBtn = el('button',{class:'btn small',type:'button','aria-label':'Close preview'},'\u00d7');
+  closeBtn.onclick = ()=>setPreviewOpen(false);
+  pv.sideBtn = el('button',{class:'btn small',type:'button',title:'Put the preview on the other side'},'Move left');
+  pv.sideBtn.onclick = ()=>{ state.previewSide = state.previewSide==='left' ? 'right' : 'left'; storePreviewPrefs(); renderPreview(); };
+  head.appendChild(pv.sideBtn); head.appendChild(pv.fullBtn); head.appendChild(closeBtn);
+  p.appendChild(head);
+
+  pv.body = el('div',{class:'pv-body'});
+
+  /* card pane: built once so the notes iframe isn't reloaded on every keystroke */
+  pv.cardPane = el('div',{class:'pv-pane'});
+  const hero = el('div',{class:'pv-hero'});
+  pv.avatar = el('img',{class:'pv-avatar',alt:''});
+  pv.avatarEmpty = el('div',{class:'pv-avatar pv-avatar-empty'},'?');
+  const heroText = el('div',{class:'pv-hero-text'});
+  pv.name = el('div',{class:'pv-name'});
+  pv.by = el('div',{class:'pv-by'});
+  pv.tags = el('div',{class:'pv-tags'});
+  heroText.appendChild(pv.name); heroText.appendChild(pv.by); heroText.appendChild(pv.tags);
+  hero.appendChild(pv.avatar); hero.appendChild(pv.avatarEmpty); hero.appendChild(heroText);
+  pv.cardPane.appendChild(hero);
+  pv.cardPane.appendChild(el('div',{class:'subhead'},'Creator notes'));
+  pv.remoteBox = el('div',{});
+  pv.cardPane.appendChild(pv.remoteBox);
+  pv.notesEmpty = el('div',{class:'pv-empty'},'No creator notes yet. They\u2019ll show up here the way readers see them, with HTML and CSS rendered.');
+  pv.cardPane.appendChild(pv.notesEmpty);
+  const fr = el('iframe',{class:'pv-notes',sandbox:'allow-same-origin',referrerpolicy:'no-referrer',title:'Creator notes preview'});
+  pv.measure = ()=>{
+    try{
+      const doc = fr.contentDocument;
+      if(!doc || !doc.documentElement) return;
+      const st = [pv.body.scrollTop, pv.cardPane.scrollTop];
+      fr.style.height = '0px';
+      const h = Math.min(doc.documentElement.scrollHeight, 5000);
+      fr.style.height = Math.max(h,40)+'px';
+      pv.body.scrollTop = st[0]; pv.cardPane.scrollTop = st[1];
+    } catch(e){ /* frame not ready */ }
+  };
+  fr.addEventListener('load', ()=>{
+    const doc = fr.contentDocument;
+    if(!doc) return;
+    doc.addEventListener('click', e=>{ if(e.target.closest && e.target.closest('a')) e.preventDefault(); });
+    doc.addEventListener('load', pv.measure, true);
+    pv.measure();
+    setTimeout(pv.measure, 350);
+  });
+  pv.notesFrame = fr;
+  pv.cardPane.appendChild(fr);
+
+  pv.promptPane = el('div',{class:'pv-pane'});
+  pv.body.appendChild(pv.cardPane); pv.body.appendChild(pv.promptPane);
+  p.appendChild(pv.body);
+}
+function updateCardPane(){
+  const d = state.data;
+  if(state.avatarUrl){
+    if(pv.avatar.getAttribute('src') !== state.avatarUrl) pv.avatar.src = state.avatarUrl;
+    pv.avatar.style.display = 'block'; pv.avatarEmpty.style.display = 'none';
+  } else {
+    pv.avatar.style.display = 'none'; pv.avatarEmpty.style.display = 'flex';
+    pv.avatarEmpty.textContent = (d.name||'?').trim().charAt(0).toUpperCase() || '?';
+  }
+  pv.name.textContent = d.name || 'unnamed character';
+  pv.name.classList.toggle('empty', !d.name);
+  const by = [];
+  if(d.creator) by.push('by '+d.creator);
+  if(d.character_version) by.push(/^v/i.test(d.character_version) ? d.character_version : 'v'+d.character_version);
+  pv.by.textContent = by.join(' \u00b7 ');
+  pv.by.style.display = by.length ? 'block' : 'none';
+  pv.tags.innerHTML = '';
+  d.tags.forEach(t=>pv.tags.appendChild(el('span',{class:'pv-tag'},t)));
+
+  const notes = d.creator_notes || '';
+  const hasRemote = /(src\s*=\s*["']?https?:|url\(\s*["']?https?:|@import|<link\b|!\[[^\]]*\]\(\s*https?:)/i.test(notes);
+  pv.remoteBox.innerHTML = '';
+  if(hasRemote || state.previewRemote){
+    switchToggle(pv.remoteBox,'Load remote images & fonts','Off by default so the preview stays fully local. Turning it on makes your browser fetch those files.',
+      ()=>state.previewRemote, v=>{ state.previewRemote = v; renderPreview(); });
+  }
+  if(!notes.trim()){
+    pv.notesEmpty.style.display = 'block';
+    pv.notesFrame.style.display = 'none';
+    pv.notesFrame.removeAttribute('srcdoc');
+    pv.notesKey = null;
+    return;
+  }
+  pv.notesEmpty.style.display = 'none';
+  pv.notesFrame.style.display = 'block';
+  const key = [state.previewRemote, document.documentElement.getAttribute('data-theme'), d.name, notes].join('\u0000');
+  if(key !== pv.notesKey){
+    pv.notesKey = key;
+    pv.notesFrame.srcdoc = buildNotesDoc(mdToHtml(fillMacros(notes)));
+  }
+}
+const MD_ALLOWED = new Set(['B','STRONG','I','EM','U','S','DEL','STRIKE','BR','P','DIV','SPAN','H1','H2','H3','H4','H5','H6','UL','OL','LI','BLOCKQUOTE','CODE','PRE','HR','SMALL','SUB','SUP']);
+const MD_DROP = new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','LINK','META','NOSCRIPT','TEMPLATE','SVG','MATH','FORM','INPUT','BUTTON','TEXTAREA','SELECT','VIDEO','AUDIO','TITLE','HEAD']);
+/* Rebuilds parsed HTML node by node from a whitelist: no attributes, no images, no scripts or styles survive. */
+function cleanInto(src,dest){
+  src.childNodes.forEach(n=>{
+    if(n.nodeType===3){ dest.appendChild(document.createTextNode(n.nodeValue)); return; }
+    if(n.nodeType!==1) return;
+    const tag = n.tagName.toUpperCase();
+    if(MD_DROP.has(tag)) return;
+    if(tag==='IMG'){ const alt = n.getAttribute('alt'); if(alt) dest.appendChild(document.createTextNode('['+alt+']')); return; }
+    if(tag==='CENTER'){ const c = document.createElement('div'); c.className = 'pv-center'; cleanInto(n,c); dest.appendChild(c); return; }
+    if(MD_ALLOWED.has(tag)){ const c = document.createElement(tag.toLowerCase()); cleanInto(n,c); dest.appendChild(c); return; }
+    cleanInto(n,dest);
+  });
+}
+function renderFormatted(container,text){
+  const html = mdToHtml(text.replace(/<START>/gi,'\u0003START\u0003'));
+  const doc = new DOMParser().parseFromString('<!DOCTYPE html><body>'+html,'text/html');
+  cleanInto(doc.body,container);
+  const tw = document.createTreeWalker(container,NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while(tw.nextNode()) nodes.push(tw.currentNode);
+  nodes.forEach(n=>{
+    if(!/\{\{[^{}]*\}\}|\u0003START\u0003/.test(n.nodeValue)) return;
+    const frag = document.createDocumentFragment();
+    n.nodeValue.split(/(\{\{[^{}]*\}\}|\u0003START\u0003)/).forEach((part,i)=>{
+      if(!part) return;
+      if(i%2===1) frag.appendChild(el('span',{class:'pv-macro'}, part==='\u0003START\u0003' ? '<START>' : part));
+      else frag.appendChild(document.createTextNode(part));
+    });
+    n.parentNode.replaceChild(frag,n);
+  });
+}
+function updatePromptPane(){
+  const pane = pv.promptPane;
+  const d = state.data;
+  pane.innerHTML = '';
+  pane.appendChild(el('p',{class:'pv-note'},'Everything the card feeds the model. Creator notes are display-only, so they\u2019re not here. ~'+estimateTokens()+' tokens, not counting the lorebook.'));
+  const seg = el('div',{class:'pv-seg',role:'group','aria-label':'Prompt text display'});
+  [['rendered','Formatted'],['plain','Raw']].forEach(([mode,label])=>{
+    const b = el('button',{class:'pv-seg-btn'+(state.previewText===mode?' active':''),type:'button',title:{rendered:'Markdown and basic HTML rendered',plain:'Exactly what the model sees'}[mode]},label);
+    b.onclick = ()=>{ state.previewText = mode; storePreviewPrefs(); renderPreview(); };
+    seg.appendChild(b);
+  });
+  pane.appendChild(seg);
+  const addSection = (label,text)=>{
+    const has = !!(text && text.trim());
+    const sec = el('section',{class:'pv-sec'+(has?'':' empty')});
+    const h = el('div',{class:'pv-sec-head'});
+    h.appendChild(el('span',{},label));
+    h.appendChild(el('span',{class:'tok'}, has ? '~'+estimateTokensText(text)+' tok' : 'not set'));
+    sec.appendChild(h);
+    if(has){
+      const body = el('div',{class:'pv-text'+(state.previewText==='rendered' ? ' md' : '')});
+      if(state.previewText==='rendered') renderFormatted(body,text); else appendHighlighted(body,text);
+      sec.appendChild(body);
+    }
+    pane.appendChild(sec);
+  };
+  addSection('System prompt', d.system_prompt);
+  addSection('Description', d.description);
+  addSection('Scenario', d.scenario);
+  addSection('Example dialogue', d.mes_example);
+  addSection('Main greeting'+(d.first_mes_meta && d.first_mes_meta.title ? ' \u00b7 '+d.first_mes_meta.title : ''), d.first_mes);
+  d.alternate_greetings.forEach((g,i)=>addSection('Alternate greeting '+(i+1)+(g.title ? ' \u00b7 '+g.title : ''), g.text));
+  addSection('Post-history instructions', d.post_history_instructions);
+
+  const book = d.character_book;
+  const n = book.entries.length;
+  if(n){
+    const tok = book.entries.reduce((a,e)=>a+estimateTokensText(e.content),0);
+    const det = el('details',{class:'pv-sec pv-lore'});
+    if(state.previewLoreOpen) det.setAttribute('open','');
+    det.addEventListener('toggle', ()=>{ state.previewLoreOpen = det.open; });
+    const sum = el('summary',{class:'pv-sec-head'});
+    sum.appendChild(el('span',{},'Lorebook \u00b7 '+(book.name||'unnamed')+' \u00b7 '+n+(n===1?' entry':' entries')));
+    sum.appendChild(el('span',{class:'tok'},'~'+tok+' tok'));
+    det.appendChild(sum);
+    book.entries.forEach(e=>{
+      const row = el('div',{class:'pv-lore-row'+(e.enabled?'':' off')});
+      row.appendChild(el('div',{class:'pv-lore-title'},[e.comment||'untitled entry', e.constant?el('span',{class:'badge const'},'always'):null, e.enabled?null:el('span',{class:'badge off'},'off')]));
+      row.appendChild(el('div',{class:'pv-lore-keys'}, e.keys.length ? e.keys.join(', ') : 'no keys'));
+      det.appendChild(row);
+    });
+    pane.appendChild(det);
+  } else {
+    const sec = el('section',{class:'pv-sec empty'});
+    const h = el('div',{class:'pv-sec-head'});
+    h.appendChild(el('span',{},'Lorebook'));
+    h.appendChild(el('span',{class:'tok'},'no entries'));
+    sec.appendChild(h);
+    pane.appendChild(sec);
+  }
+}
+function renderPreview(){
+  const panel = document.getElementById('previewPanel');
+  const btn = document.getElementById('btnPreview');
+  btn.setAttribute('aria-pressed', state.previewOpen ? 'true' : 'false');
+  panel.hidden = !state.previewOpen;
+  document.querySelector('.app').classList.toggle('has-preview', state.previewOpen);
+  const overlay = state.previewOpen && state.previewFull;
+  const appEl = document.querySelector('.app');
+  appEl.style.setProperty('--pv-pct', state.previewPct);
+  appEl.classList.toggle('pv-left', state.previewSide==='left');
+  panel.classList.toggle('full', overlay);
+  document.body.classList.toggle('pv-lock', overlay);
+  if(!state.previewOpen) return;
+  if(!pv.body) buildPreview();
+  pv.fullBtn.textContent = state.previewFull ? 'Exit fullscreen' : 'Fullscreen';
+  pv.sideBtn.textContent = state.previewSide==='left' ? 'Move right' : 'Move left';
+  pv.sideBtn.style.display = overlay ? 'none' : '';
+  ['card','prompt','full'].forEach(id=>{
+    const on = state.previewTab === id;
+    pv.tabBtns[id].classList.toggle('active', on);
+    pv.tabBtns[id].setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  const sts = [pv.body, pv.cardPane, pv.promptPane].map(n=>n.scrollTop);
+  const showCard = state.previewTab !== 'prompt', showPrompt = state.previewTab !== 'card';
+  pv.body.classList.toggle('both', showCard && showPrompt);
+  pv.cardPane.style.display = showCard ? 'block' : 'none';
+  pv.promptPane.style.display = showPrompt ? 'block' : 'none';
+  if(showCard) updateCardPane();
+  if(showPrompt) updatePromptPane();
+  [pv.body, pv.cardPane, pv.promptPane].forEach((n,i)=>{ n.scrollTop = sts[i]; });
+  const layout = state.previewTab+'|'+overlay;
+  if(layout !== pv.lastLayout){ pv.lastLayout = layout; if(showCard) setTimeout(pv.measure, 60); }
+}
+let previewTimer;
+function schedulePreview(){
+  if(!state.previewOpen) return;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(renderPreview, 120);
+}
+document.getElementById('btnPreview').onclick = ()=> setPreviewOpen(!state.previewOpen);
+['input','change','click'].forEach(type=>{
+  document.addEventListener(type, e=>{
+    if(!state.previewOpen) return;
+    if(e.target && e.target.closest && e.target.closest('#previewPanel')) return;
+    schedulePreview();
+  }, true);
+});
+window.addEventListener('resize', ()=>{ if(!state.previewOpen) return; renderPreview(); if(pv.measure) pv.measure(); });
+document.addEventListener('keydown', e=>{
+  if(e.key !== 'Escape' || !state.previewOpen || document.querySelector('.modal-overlay')) return;
+  if(state.previewFull){ state.previewFull = false; renderPreview(); }
+});
+
 document.getElementById('btnExportJson').onclick = exportJson;
 document.getElementById('btnExportPng').onclick = ()=> exportPng().catch(err=>alert('Export failed: '+err.message));
 document.getElementById('btnImport').onclick = ()=> document.getElementById('fileImport').click();
@@ -1068,6 +1563,7 @@ function storeTheme(t){
 }
 function applyTheme(theme){
   document.documentElement.setAttribute('data-theme', theme);
+  schedulePreview();
   const btn = document.getElementById('btnTheme');
   if(!btn) return;
   btn.textContent = theme==='light' ? '\u2600' : '\u263e';

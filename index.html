@@ -18,7 +18,9 @@
   <div class="topbar-right">
     <button class="btn theme-toggle" id="btnTheme" type="button" aria-label="Toggle light or dark theme">&#9790;</button>
     <span class="token-badge" id="tokenBadge">~0 tokens</span>
-    <button class="btn" id="btnNew">New</button>
+    <button class="btn" id="btnPreview" type="button" aria-pressed="false">Preview</button>
+    <button class="btn" id="btnRestore" type="button" disabled>Restore</button>
+    <button class="btn danger" id="btnNew" type="button">Clear all</button>
     <input type="file" id="fileImport" accept=".png,.json" style="display:none">
     <input type="file" id="fileLorebook" accept=".json" multiple style="display:none">
     <button class="btn" id="btnImport">Import card</button>
@@ -28,6 +30,7 @@
 </div>
 
 <div class="app">
+  <div class="editor">
   <div class="tabs" id="tabs"></div>
   <div class="card">
     <div class="preview-strip">
@@ -41,6 +44,8 @@
     </div>
     <div class="card-inner" id="tabContent"></div>
   </div>
+  </div>
+  <aside class="preview-panel" id="previewPanel" aria-label="Card preview" hidden></aside>
 </div>
 
 <footer>
