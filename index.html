@@ -24,8 +24,17 @@
     <input type="file" id="fileImport" accept=".png,.json" style="display:none">
     <input type="file" id="fileLorebook" accept=".json" multiple style="display:none">
     <button class="btn" id="btnImport">Import card</button>
-    <button class="btn" id="btnExportJson">Export JSON</button>
-    <button class="btn primary" id="btnExportPng">Export PNG</button>
+    <div class="export-menu" id="exportMenu">
+      <button class="btn primary" id="btnExport" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="exportPop">Export &#9662;</button>
+      <div class="export-pop" id="exportPop" hidden>
+        <label class="fname-toggle"><input type="checkbox" id="chkFileName"><span>Custom file name</span></label>
+        <input type="text" id="txtFileName" class="fname-input" placeholder="file name" aria-label="Custom file name" hidden>
+        <div class="export-actions">
+          <button class="btn" id="btnExportJson" type="button">JSON</button>
+          <button class="btn primary" id="btnExportPng" type="button">PNG</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 

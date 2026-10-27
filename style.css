@@ -139,6 +139,15 @@ label{
 }
 .token-badge b{color:var(--amber);font-weight:500;}
 
+.fname-toggle{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11.5px;color:var(--text-dim);cursor:pointer;white-space:nowrap;}
+.fname-toggle input{width:auto;padding:0;accent-color:var(--amber);}
+.fname-input{padding:6px 9px;font-family:var(--font-mono);font-size:12px;}
+.export-menu{position:relative;}
+.export-pop{position:absolute;right:0;top:calc(100% + 8px);z-index:50;min-width:230px;display:flex;flex-direction:column;gap:10px;padding:12px;background:var(--panel-raised);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.35);}
+.export-pop[hidden]{display:none;}
+.export-actions{display:flex;gap:8px;}
+.export-actions .btn{flex:1;justify-content:center;}
+
 .btn{
   background:var(--panel-raised);
   border:1px solid var(--line);

@@ -389,6 +389,12 @@ function downloadBlob(blob,filename){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
+function getFileName(ext){
+  const def = state.data.name || 'character';
+  const on = document.getElementById('chkFileName').checked;
+  const raw = on ? document.getElementById('txtFileName').value.trim() : '';
+  return (raw || def).replace(/[\\/:*?"<>|]/g,'_').replace(new RegExp('\\.'+ext+'$','i'),'') + '.' + ext;
+}
 async function exportPng(){
   let arrayBuffer = state.avatarBuffer || await generateDefaultAvatarPNG();
   if(!isPngBuffer(arrayBuffer)) arrayBuffer = await toPngBuffer(arrayBuffer);
@@ -399,11 +405,11 @@ async function exportPng(){
   const toInsert = [makeTextChunk('chara', utf8ToBase64(JSON.stringify(buildV2Card())))];
   chunks.splice(insertAt,0,...toInsert);
   const bytes = buildPNG(chunks);
-  downloadBlob(new Blob([bytes],{type:'image/png'}), (state.data.name||'character')+'.png');
+  downloadBlob(new Blob([bytes],{type:'image/png'}), getFileName('png'));
 }
 function exportJson(){
   const card = buildV2Card();
-  downloadBlob(new Blob([JSON.stringify(card,null,2)],{type:'application/json'}), (state.data.name||'character')+'.json');
+  downloadBlob(new Blob([JSON.stringify(card,null,2)],{type:'application/json'}), getFileName('json'));
 }
 async function importFile(file){
   if(file.type === 'application/json' || file.name.endsWith('.json')){
@@ -1494,6 +1500,22 @@ document.addEventListener('keydown', e=>{
   if(state.previewFull){ state.previewFull = false; renderPreview(); }
 });
 
+document.getElementById('chkFileName').onchange = e => {
+  const t = document.getElementById('txtFileName');
+  t.hidden = !e.target.checked;
+  if(e.target.checked) t.focus();
+};
+(function(){
+  const menu = document.getElementById('exportMenu');
+  const btn = document.getElementById('btnExport');
+  const pop = document.getElementById('exportPop');
+  const setOpen = open => { pop.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
+  btn.onclick = () => setOpen(pop.hidden);
+  document.addEventListener('click', e => { if(!menu.contains(e.target)) setOpen(false); });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape' && !pop.hidden){ setOpen(false); btn.focus(); } });
+  document.getElementById('btnExportJson').addEventListener('click', () => setOpen(false));
+  document.getElementById('btnExportPng').addEventListener('click', () => setOpen(false));
+})();
 document.getElementById('btnExportJson').onclick = exportJson;
 document.getElementById('btnExportPng').onclick = ()=> exportPng().catch(err=>alert('Export failed: '+err.message));
 document.getElementById('btnImport').onclick = ()=> document.getElementById('fileImport').click();
